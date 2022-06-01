@@ -1,0 +1,81 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  BRANCH_ENV_MAPPING: development=dev;master=prod
+  APP_NAME: flash
+
+.build_container_meta_template: &build_container_meta_definition
+  stage: build
+  image: docker:stable-git
+  interruptible: true
+  tags:
+    - docker
+  before_script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+
+.just_build_container_template: &just_build_container_definition
+  <<: *build_container_meta_definition
+  script:
+    - DOCKERFILE="./$APP_TIER.Dockerfile"
+    - docker build --rm -f $DOCKERFILE .
+  only:
+    refs:
+      - merge_requests
+  except:
+    refs:
+      - development
+      - qa
+      - pre-release
+      - master
+      - cicd
+
+.build_container_template: &build_container_definition
+  <<: *build_container_meta_definition
+  script:
+    - APP_TYPE=$(echo $BRANCH_ENV_MAPPING | awk -v branch="$CI_COMMIT_REF_NAME" '{split($0,a,";"); for(i in a) { split(a[i], b, "="); branches[b[1]]=b[2]; }};{print branches[branch]}' )
+    - DOCKERFILE="./$APP_TIER.Dockerfile"
+    - docker build -t $CI_REGISTRY_IMAGE/$APP_TYPE/$APP_TIER:latest --build-arg COMMIT_SHA=${CI_COMMIT_SHA} --build-arg COMMIT_REF_NAME=${CI_COMMIT_REF_NAME} -f $DOCKERFILE .
+    - docker push $CI_REGISTRY_IMAGE/$APP_TYPE/$APP_TIER:latest
+  only:
+    refs:
+      - development
+      - qa
+      - pre-release
+      - master
+      - cicd
+  except:
+    refs:
+      - merge_requests
+
+just build frontend:
+  extends: .just_build_container_template
+  variables:
+    APP_TIER: frontend
+
+build frontend:
+  extends: .build_container_template
+  variables:
+    APP_TIER: frontend
+
+deploy:
+  stage: deploy
+  tags:
+    - docker
+  image: registry.digitalskynet.com/devops/base-images/cicd:curl
+  variables:
+  script:
+    - ENV=$(echo $BRANCH_ENV_MAPPING | awk -v branch="$CI_COMMIT_REF_NAME" '{split($0,a,";"); for(i in a) { split(a[i], b, "="); branches[b[1]]=b[2]; }};{print branches[branch]}' )
+    - kapitan-deploy.sh "${APP_NAME}_${ENV}"
+  only:
+    refs:
+      - development
+      - qa
+      - pre-release
+      - master
+      - cicd
+  except:
+    refs:
+      - merge_requests
+    

@@ -1,0 +1,13 @@
+version: "3"
+services:
+  frontend:
+    image: registry.digitalskynet.com/flash/alpr-ui/dev/frontend
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    environment:
+      ALPR_BACKEND_URL: https://flash.devstaging.pw
+      ALPR_DNS_RESOLVER: 127.0.0.11
+      ALPR_PUBLIC_URL: http://localhost:3000
+    ports:
+      - 3000:80
